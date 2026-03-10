@@ -13,10 +13,7 @@ function normalizePayload(body) {
 
 export default class ProductController {
   async index(req, res) {
-    const page = Number(req.query.page || 1)
-    const perPage = Number(req.query.per_page || 10)
-    const result = await Product.orderBy('id', 'desc').paginate(page, perPage)
-    return res.paginated(result.data, result.meta)
+    return res.success('massasdkajl')
   }
 
   async show(req, res) {
