@@ -5,6 +5,7 @@ Backurus is a Laravel-inspired Node.js backend framework built with modern ES Mo
 ## Features
 
 - `node urus` CLI for generators and operational commands
+- Multipart image/file upload parsing and public disk storage
 - Laravel-like route syntax with controller string actions
 - Eloquent-style ORM with CRUD, query builder, pagination, soft deletes, and relationships
 - Schema builder and migration system for MySQL and SQLite
@@ -46,6 +47,7 @@ node urus queue:work
 node urus queue:restart
 node urus schedule:run
 node urus serve
+node urus storage:link
 node urus config:cache
 node urus config:clear
 ```
@@ -54,9 +56,27 @@ node urus config:clear
 
 - `app/` controllers, models, middleware, requests, jobs, events, policies, resources, modules
 - `bootstrap/` application bootstrap
-- `config/` app, database, auth, and queue configuration
+- `config/` app, database, auth, queue, and storage configuration
 - `core/` framework internals
 - `database/` migrations and seeders
 - `routes/` API, web, and console schedule definitions
 - `plugins/` auto-loaded plugins
 - `docs/` multilingual documentation website
+
+## File Uploads
+
+Create the public storage symlink:
+
+```bash
+node urus storage:link
+```
+
+Use multipart form-data in your controller and store the uploaded image on the `public` disk:
+
+```js
+import { Storage } from '../../core/facades'
+
+const image = req.file('image')
+const path = await Storage.disk('public').putFile('products', image)
+const url = Storage.disk('public').url(path)
+```

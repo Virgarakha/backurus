@@ -14,6 +14,7 @@ import { CacheStore } from '../core/cache'
 import { GateRegistry } from '../core/gate'
 import { Scheduler, loadSchedule } from '../core/scheduler'
 import { authMiddleware } from '../core/auth'
+import { StorageManager } from '../core/storage'
 import SendWelcomeEmail from '../app/listeners/SendWelcomeEmail'
 import UserRegistered from '../app/events/UserRegistered'
 import { setRuntimeConfig } from '../core/runtime'
@@ -32,6 +33,7 @@ export async function createApp() {
   const cache = new CacheStore()
   const gate = new GateRegistry()
   const scheduler = new Scheduler()
+  const storage = new StorageManager(config.storage)
 
   container.singleton('config', () => config)
   container.singleton('db', () => db)
@@ -41,6 +43,7 @@ export async function createApp() {
   container.singleton('cache', () => cache)
   container.singleton('gate', () => gate)
   container.singleton('scheduler', () => scheduler)
+  container.singleton('storage', () => storage)
   container.singleton('response', () => new ResponseFactory())
 
   const server = new Server({ config, container, db, events, queue, ws })

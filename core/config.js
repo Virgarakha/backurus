@@ -4,6 +4,7 @@ import app from '../config/app'
 import database from '../config/database'
 import auth from '../config/auth'
 import queue from '../config/queue'
+import storage from '../config/storage'
 import { appConfig } from './runtime'
 
 function getValue(source, key) {
@@ -25,6 +26,7 @@ export function loadConfig() {
     auth,
     database,
     queue,
+    storage,
     rateLimit: {
       max: Number(process.env.RATE_LIMIT_MAX || 100),
       windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 60000)
