@@ -7,7 +7,6 @@
 </p>
 
 <p align="center">
-  <img alt="Node >=20" src="https://img.shields.io/badge/node-%3E%3D20-0f766e?style=for-the-badge">
   <img alt="ESM" src="https://img.shields.io/badge/module-ESM-1f2937?style=for-the-badge">
   <img alt="API First" src="https://img.shields.io/badge/focus-API%20First-f97316?style=for-the-badge">
 </p>
