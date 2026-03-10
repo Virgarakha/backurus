@@ -24,9 +24,9 @@ Backurus includes:
 To start a new Backurus project, the intended workflow is:
 
 ```bash
-npx create-backurus-app my-api
-cd my-api
-node urus serve
+npx create-backurus-app@latest
+cd app-name
+npm run dev
 ```
 
 For this repository scaffold, install dependencies and boot the framework locally:
@@ -35,7 +35,7 @@ For this repository scaffold, install dependencies and boot the framework locall
 npm install
 node urus migrate
 node urus db:seed
-node urus serve
+npm run dev
 ```
 
 Backurus reads environment variables from `.env`. Typical keys are:
