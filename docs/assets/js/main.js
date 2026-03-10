@@ -16,31 +16,16 @@ const SEARCH_INDEX = [
   { page: 'cli.html', title: 'nav.cli', description: 'search.cli_desc' }
 ]
 
-function escapeHtml(value) {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-}
-
-function simpleHighlight(text) {
-  return escapeHtml(text)
-    .replace(/(\/\/.*$)/gm, '<span class="token-comment">$1</span>')
-    .replace(/\b(import|from|export|default|class|static|async|await|return|const|let|new|if|throw)\b/g, '<span class="token-keyword">$1</span>')
-    .replace(/\b(Model|Router|UserController|StoreUserRequest|SendEmailJob|AuthController)\b/g, '<span class="token-type">$1</span>')
-    .replace(/(".*?"|'.*?'|`.*?`)/g, '<span class="token-string">$1</span>')
-    .replace(/\b(\d+)\b/g, '<span class="token-number">$1</span>')
-}
-
 function applyHighlighting() {
-  document.querySelectorAll('pre code').forEach((block) => {
-    const source = block.textContent
-    block.innerHTML = simpleHighlight(source)
-  })
+  if (window.Prism?.highlightAll) {
+    window.Prism.highlightAll()
+  }
 }
 
 function setupCopyButtons() {
   document.querySelectorAll('.copy-button').forEach((button) => {
+    if (button.dataset.bound === 'true') return
+    button.dataset.bound = 'true'
     button.addEventListener('click', async () => {
       const code = button.closest('.code-block')?.querySelector('code')?.textContent || ''
       await navigator.clipboard.writeText(code)
@@ -136,11 +121,15 @@ function updateGeneratedStrings() {
   document.querySelectorAll('[data-copy-label]').forEach((button) => {
     button.textContent = t('ui.copy_code')
   })
+
+  const metaLanguage = document.querySelector('[data-language-value]')
+  if (metaLanguage) metaLanguage.textContent = getCurrentLanguage().toUpperCase()
 }
 
 document.addEventListener('i18n:updated', () => {
   updateGeneratedStrings()
   setupActiveNav()
+  applyHighlighting()
 })
 
 window.addEventListener('DOMContentLoaded', async () => {
@@ -150,11 +139,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   setupSidebar()
   setupActiveNav()
   setupSearch()
-  applyHighlighting()
   setupCopyButtons()
   updateGeneratedStrings()
   renderSearchResults('')
-
-  const metaLanguage = document.querySelector('[data-language-value]')
-  if (metaLanguage) metaLanguage.textContent = getCurrentLanguage().toUpperCase()
+  applyHighlighting()
 })
