@@ -54,3 +54,9 @@ export const Gate = {
     return service('gate').authorize(name, ...args)
   }
 }
+
+export const Storage = {
+  disk(name = null) {
+    return service('storage').disk(name)
+  }
+}

@@ -5,12 +5,12 @@ import path from 'node:path'
 import { spawn } from 'node:child_process'
 import dotenv from 'dotenv'
 import chokidar from 'chokidar'
-import { createApp } from '../bootstrap/app'
-import { Migrator } from '../core/migrator'
-import { Seeder } from '../core/seeder'
-import { loadConfig } from '../core/config'
-import { Router, loadRoutes } from '../core/router'
-import { registerDocsRoute } from '../core/swagger'
+import { createApp } from '../bootstrap/app.js'
+import { Migrator } from '../core/migrator.js'
+import { Seeder } from '../core/seeder.js'
+import { loadConfig } from '../core/config.js'
+import { Router, loadRoutes } from '../core/router.js'
+import { registerDocsRoute } from '../core/swagger.js'
 
 dotenv.config()
 
@@ -121,6 +121,28 @@ async function queueRestart() {
   console.log('Queue restart signal written.')
 }
 
+async function storageLink() {
+  const target = path.resolve(process.cwd(), 'storage/app/public')
+  const link = path.resolve(process.cwd(), 'public/storage')
+  await fsp.mkdir(target, { recursive: true })
+  await fsp.mkdir(path.dirname(link), { recursive: true })
+
+  try {
+    const stat = await fsp.lstat(link)
+    if (stat.isSymbolicLink()) {
+      console.log('The [public/storage] link already exists.')
+      return
+    }
+    throw new Error('Path [public/storage] already exists and is not a symbolic link.')
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error
+  }
+
+  const relativeTarget = path.relative(path.dirname(link), target)
+  await fsp.symlink(relativeTarget, link, process.platform === 'win32' ? 'junction' : 'dir')
+  console.log('The [public/storage] link has been connected to [storage/app/public].')
+}
+
 async function migrateStatus(app) {
   const migrator = new Migrator(app.db, app.config)
   const files = await migrator.files()
@@ -147,6 +169,7 @@ async function main() {
     case 'make:module': return makeModule(name)
     case 'config:cache': return configCache()
     case 'config:clear': return configClear()
+    case 'storage:link': return storageLink()
     case 'serve': return startServe()
     case 'route:list': return routeList()
   }
@@ -168,7 +191,7 @@ async function main() {
       case 'queue:restart': return queueRestart()
       case 'schedule:run': return app.container.make('scheduler').runAll()
       default:
-        console.log(`Backurus CLI\n\nCommands:\n- make:controller\n- make:model\n- make:migration\n- make:middleware\n- make:request\n- make:job\n- make:event\n- make:seeder\n- make:policy\n- make:resource\n- make:module\n- migrate\n- migrate:rollback\n- migrate:reset\n- migrate:fresh\n- migrate:status\n- db:seed\n- route:list\n- queue:work\n- queue:restart\n- schedule:run\n- serve\n- config:cache\n- config:clear`)
+        console.log(`Backurus CLI\n\nCommands:\n- make:controller\n- make:model\n- make:migration\n- make:middleware\n- make:request\n- make:job\n- make:event\n- make:seeder\n- make:policy\n- make:resource\n- make:module\n- migrate\n- migrate:rollback\n- migrate:reset\n- migrate:fresh\n- migrate:status\n- db:seed\n- route:list\n- queue:work\n- queue:restart\n- schedule:run\n- serve\n- storage:link\n- config:cache\n- config:clear`)
     }
   })
 }
