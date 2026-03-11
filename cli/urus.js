@@ -562,8 +562,7 @@ async function main() {
       case 'migrate:rollback': return migrator.rollback()
       case 'migrate:reset': return migrator.reset()
       case 'migrate:fresh':
-        await migrator.reset()
-        return migrator.migrate()
+        return migrator.fresh()
       case 'migrate:status': return migrateStatus(app)
       case 'db:seed': return seeder.run(name || null)
       case 'queue:work': return app.queue.work()

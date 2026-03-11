@@ -1,0 +1,114 @@
+CRUD SISWA (RELASI KE USERS) - LANGKAH-LANGKAH
+
+Goal:
+- Buat CRUD resource "Siswa"
+- Tabel `siswas` punya relasi ke tabel `users` lewat kolom `user_id`
+- Endpoint GET (index/show) mengembalikan data siswa + relasi user (belongsTo)
+
+==================================================
+1) BUAT MIGRATION
+==================================================
+
+File dibuat:
+- database/migrations/20260311000000_create_siswas_table.js
+
+Isi inti:
+- foreignId('user_id').constrained('users')
+- kolom kompleks: nisn unique, enum jenis_kelamin, tanggal_lahir, kelas, jurusan, alamat, wali_*, ipk decimal, meta json, aktif boolean, deleted_at, timestamps.
+
+Jalankan:
+  node urus migrate
+
+==================================================
+2) BUAT MODEL + RELASI
+==================================================
+
+File dibuat:
+- app/models/Siswa.js
+
+Relasi:
+- Siswa.user() -> belongsTo(User, 'user_id')
+
+Cara pakai relasi:
+  await Siswa.with('user').get()
+
+==================================================
+3) BUAT REQUEST VALIDATION
+==================================================
+
+File dibuat:
+- app/requests/StoreSiswaRequest.js
+
+Rules contoh:
+- user_id: required|integer
+- nisn: required|string|min:5|max:32
+- nama: required|alpha_spaces|min:3|max:150
+
+Sanitize:
+- trim beberapa field (nisn, nama, dll)
+
+==================================================
+4) BUAT CONTROLLER CRUD
+==================================================
+
+File dibuat:
+- app/controllers/SiswaController.js
+
+Implementasi penting:
+- GET /siswas -> `Siswa.with('user')...get()`
+- GET /siswas/:id -> `Siswa.with('user').where('id', ...).first()`
+- POST/PUT validasi pakai:
+  await validate(req, StoreSiswaRequest)
+
+==================================================
+5) DAFTARKAN ROUTES
+==================================================
+
+File:
+- routes/api.js
+
+Endpoints:
+- GET    /siswas
+- POST   /siswas
+- GET    /siswas/:id
+- PUT    /siswas/:id
+- DELETE /siswas/:id
+
+Lihat route:
+  node urus route:list
+
+==================================================
+6) JALANKAN SERVER + TEST CEPAT
+==================================================
+
+Jalankan:
+  node urus serve
+
+Test (contoh):
+  curl -X GET http://127.0.0.1:3001/siswas
+
+Contoh create (pastikan user_id sudah ada di tabel users):
+  curl -X POST http://127.0.0.1:3001/siswas \
+    -H "Content-Type: application/json" \
+    -d '{
+      "user_id": 1,
+      "nisn": "1234567890",
+      "nama": "Rakha Pratama",
+      "jenis_kelamin": "L",
+      "kelas": "XII",
+      "jurusan": "RPL",
+      "aktif": true
+    }'
+
+==================================================
+7) CATATAN TIM BESAR
+==================================================
+
+Untuk scale tim besar, bisa pindahkan CRUD ini menjadi module:
+- modules/siswa/routes.js
+- modules/siswa/controllers/SiswaController.js
+- modules/siswa/services/SiswaService.js
+
+Lalu route action bisa pakai:
+  Route.get('/siswas', 'Siswa/SiswaController@index')
+
