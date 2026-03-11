@@ -7,6 +7,7 @@ import { limit } from './limit.js'
 import { log } from './log.js'
 import { str } from './str.js'
 import { Cache, DB, Event, Gate, Log, Queue, Storage } from '../facades.js'
+import { sanitize, validate, validator } from '../validator.js'
 
 export function registerGlobals() {
   const defs = {
@@ -19,6 +20,9 @@ export function registerGlobals() {
     limit,
     log,
     str,
+    sanitize,
+    validate,
+    validator,
     Cache,
     DB,
     Event,
@@ -34,4 +38,3 @@ export function registerGlobals() {
 
   return defs
 }
-
