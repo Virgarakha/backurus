@@ -1,8 +1,8 @@
 import bcrypt from 'bcryptjs'
 import User from '../models/User'
-import { signToken } from '../../core/auth'
+import { signToken } from 'backurus/core/auth'
 import UserRegistered from '../events/UserRegistered'
-import { Auth, Cache } from '../../core/facades.js'
+import { Auth } from 'backurus'
 
 export default class AuthController {
   static async register(req, res) {

@@ -1,6 +1,6 @@
 import User from '../models/User'
 import StoreUserRequest from '../requests/StoreUserRequest'
-import { validate } from '../../core/validator'
+import { validate } from 'backurus/core/validator'
 
 export default class UserController {
   static async index(req, res) {

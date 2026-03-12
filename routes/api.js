@@ -1,4 +1,4 @@
-import { roleGuard } from '../core/auth'
+import { roleGuard } from 'backurus/core/auth'
 
 export default async function routes(Route) {
   Route.get('/health', async (req, res) => res.success({ status: 'ok' })).name('health')

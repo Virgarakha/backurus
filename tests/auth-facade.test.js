@@ -1,5 +1,5 @@
-import { Auth } from '../core/facades.js'
-import { runWithRequestContext } from '../core/request-context.js'
+import { Auth } from 'backurus'
+import { runWithRequestContext } from 'backurus/core/request-context'
 
 test('Auth reads user from request context', async () => {
   const req = { headers: {}, user: { id: 123, email: 'a@b.com' } }

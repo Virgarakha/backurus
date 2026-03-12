@@ -1,11 +1,8 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { pathToFileURL } from 'node:url'
 import { validate } from './validator.js'
 import { limit } from './helpers/limit.js'
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const routesDir = path.resolve(__dirname, '../routes')
 
 function compilePath(routePath) {
   const keys = []
@@ -212,6 +209,7 @@ export class Router {
 }
 
 export async function loadRoutes(router, context) {
+  const routesDir = path.resolve(process.cwd(), 'routes')
   const files = await fs.readdir(routesDir)
   for (const file of files.filter((name) => name.endsWith('.js') && name !== 'console.js').sort()) {
     const mod = await import(pathToFileURL(path.join(routesDir, file)).href)

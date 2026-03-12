@@ -1,11 +1,9 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const pluginsDir = path.resolve(__dirname, '../plugins')
+import { pathToFileURL } from 'node:url'
 
 export async function loadPlugins(context) {
+  const pluginsDir = path.resolve(process.cwd(), 'plugins')
   const entries = await fs.readdir(pluginsDir, { withFileTypes: true }).catch(() => [])
   for (const entry of entries) {
     if (!entry.isDirectory()) continue

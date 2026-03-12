@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken'
-import User from '../app/models/User.js'
+import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 function revokedTokenKey(token) {
   return `auth:revoked:${token}`
@@ -12,6 +13,31 @@ function bearerTokenFromReq(req) {
   if (!value.toLowerCase().startsWith('bearer ')) return null
   const token = value.slice(7).trim()
   return token || null
+}
+
+let importedUserModel = null
+async function resolveUserModelFromConfig(container) {
+  if (importedUserModel) return importedUserModel
+  const config = container.make('config')
+  const userModelPath = config?.auth?.userModel
+  if (!userModelPath) return null
+  const absolute = path.resolve(process.cwd(), String(userModelPath))
+  const mod = await import(pathToFileURL(absolute).href)
+  importedUserModel = mod.default ?? null
+  return importedUserModel
+}
+
+async function loadUserById(container, userId) {
+  if (!userId) return null
+
+  if (container.has('auth.userProvider')) {
+    const provider = container.make('auth.userProvider')
+    return provider ? await provider(userId, { container }) : null
+  }
+
+  const UserModel = await resolveUserModelFromConfig(container)
+  if (!UserModel || typeof UserModel.find !== 'function') return null
+  return UserModel.find(userId)
 }
 
 export function signToken(payload, config) {
@@ -32,7 +58,7 @@ export function authMiddleware(container) {
       const userId = payload?.id
       if (!userId) return res.unauthorized('Invalid token')
 
-      const user = await User.find(userId)
+      const user = await loadUserById(container, userId)
       if (!user) return res.unauthorized('Unauthorized')
 
       req.token = token
