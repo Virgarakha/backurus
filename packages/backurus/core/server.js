@@ -7,6 +7,7 @@ import { parseRequest } from './request'
 import { createRateLimiter } from './rate-limiter'
 import { setContainer } from './runtime'
 import { handleError } from './errors/Handler.js'
+import { runWithRequestContext } from './request-context.js'
 
 async function runStack(stack, req, res) {
   let index = -1
@@ -134,42 +135,44 @@ export class Server {
   async handle(req, res) {
     this.container.make('response').attach(res)
     req.container = this.container
-    try {
-      const parsedUrl = new URL(req.url, 'http://127.0.0.1')
-      req.path = parsedUrl.pathname
-      req.query = Object.fromEntries(parsedUrl.searchParams.entries())
-      applyCorsHeaders(req, res, this.config.cors)
+    return runWithRequestContext({ req, res }, async () => {
+      try {
+        const parsedUrl = new URL(req.url, 'http://127.0.0.1')
+        req.path = parsedUrl.pathname
+        req.query = Object.fromEntries(parsedUrl.searchParams.entries())
+        applyCorsHeaders(req, res, this.config.cors)
 
-      if (req.method === 'OPTIONS') {
-        res.statusCode = 204
-        res.end()
-        return
+        if (req.method === 'OPTIONS') {
+          res.statusCode = 204
+          res.end()
+          return
+        }
+
+        const parsedRequest = await parseRequest(req)
+        req.body = parsedRequest.body
+        req.files = parsedRequest.files
+        req.rawBody = parsedRequest.rawBody
+        req.validated = () => req.body
+        req.file = (name) => {
+          const value = req.files?.[name]
+          return Array.isArray(value) ? value[0] : value || null
+        }
+
+        const matched = this.router.match(req.method, req.path)
+        if (!matched) {
+          const served = await serveStatic(req, res, path.resolve(process.cwd(), 'public'))
+          if (served) return
+          return res.notFound()
+        }
+
+        req.params = matched.params
+        const stack = await this.router.resolveRouteHandlers(matched.route)
+        await runStack(stack, req, res)
+      } catch (error) {
+        if (res.writableEnded) return
+        await handleError(error, req, res, { config: this.config })
       }
-
-      const parsedRequest = await parseRequest(req)
-      req.body = parsedRequest.body
-      req.files = parsedRequest.files
-      req.rawBody = parsedRequest.rawBody
-      req.validated = () => req.body
-      req.file = (name) => {
-        const value = req.files?.[name]
-        return Array.isArray(value) ? value[0] : value || null
-      }
-
-      const matched = this.router.match(req.method, req.path)
-      if (!matched) {
-        const served = await serveStatic(req, res, path.resolve(process.cwd(), 'public'))
-        if (served) return
-        return res.notFound()
-      }
-
-      req.params = matched.params
-      const stack = await this.router.resolveRouteHandlers(matched.route)
-      await runStack(stack, req, res)
-    } catch (error) {
-      if (res.writableEnded) return
-      await handleError(error, req, res, { config: this.config })
-    }
+    })
   }
 
   async start() {

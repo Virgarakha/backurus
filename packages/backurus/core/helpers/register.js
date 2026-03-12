@@ -7,6 +7,7 @@ import { limit } from './limit.js'
 import { log } from './log.js'
 import { str } from './str.js'
 import { Cache, DB, Event, Gate, Log, Queue, Storage } from '../facades.js'
+import { Auth } from '../facades.js'
 import { sanitize, validate, validator } from '../validator.js'
 import { config } from '../config.js'
 
@@ -31,7 +32,8 @@ export function registerGlobals() {
     Gate,
     Log,
     Queue,
-    Storage
+    Storage,
+    Auth
   }
 
   for (const [key, value] of Object.entries(defs)) {

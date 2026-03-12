@@ -1,18 +1,25 @@
 import fs from 'node:fs'
+import fsp from 'node:fs/promises'
 import path from 'node:path'
-import app from '../config/app'
-import database from '../config/database'
-import auth from '../config/auth'
-import queue from '../config/queue'
-import storage from '../config/storage'
-import cache from '../config/cache'
+import { pathToFileURL } from 'node:url'
 import { appConfig } from './runtime'
 
 function getValue(source, key) {
   return key.split('.').reduce((value, part) => value?.[part], source)
 }
 
-export function loadConfig() {
+async function importProjectConfig(name) {
+  const file = path.resolve(process.cwd(), 'config', `${name}.js`)
+  try {
+    await fsp.access(file)
+  } catch {
+    return null
+  }
+  const mod = await import(pathToFileURL(file).href)
+  return mod.default ?? null
+}
+
+export async function loadConfig() {
   const cacheFile = path.resolve(process.cwd(), 'storage/framework/cache/config.json')
   if (fs.existsSync(cacheFile)) {
     try {
@@ -22,13 +29,22 @@ export function loadConfig() {
     }
   }
 
+  const [app, auth, cache, database, queue, storage] = await Promise.all([
+    importProjectConfig('app'),
+    importProjectConfig('auth'),
+    importProjectConfig('cache'),
+    importProjectConfig('database'),
+    importProjectConfig('queue'),
+    importProjectConfig('storage')
+  ])
+
   return {
-    app,
-    auth,
-    cache,
-    database,
-    queue,
-    storage,
+    app: app || {},
+    auth: auth || {},
+    cache: cache || {},
+    database: database || {},
+    queue: queue || {},
+    storage: storage || {},
     cors: {
       origin: process.env.CORS_ORIGIN || 'http://localhost:5173,http://127.0.0.1:5173',
       methods: process.env.CORS_METHODS || 'GET,POST,PUT,PATCH,DELETE,OPTIONS',

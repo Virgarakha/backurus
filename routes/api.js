@@ -1,10 +1,11 @@
-import { roleGuard } from '../core/auth'
+import { roleGuard } from 'backurus/core/auth'
 
 export default async function routes(Route) {
   Route.get('/health', async (req, res) => res.success({ status: 'ok' })).name('health')
 
   Route.post('/login', 'AuthController@login').name('auth.login')
   Route.post('/register', 'AuthController@register').name('auth.register')
+  Route.post('/logout', 'AuthController@logout').middleware('auth').name('auth.logout')
 
   Route.get('/users', 'UserController@index').name('users.index')
   Route.post('/users', 'UserController@store').name('users.store')
@@ -12,16 +13,4 @@ export default async function routes(Route) {
   Route.put('/users/:id', 'UserController@update').name('users.update')
   Route.delete('/users/:id', 'UserController@destroy', roleGuard('admin')).middleware('auth').name('users.destroy')
   Route.get('/profile', 'UserController@profile').middleware('auth').name('users.profile')
-
-  Route.get('/products', 'ProductController@index').name('products.index')
-  Route.post('/products', 'ProductController@store').name('products.store')
-  Route.get('/products/:id', 'ProductController@show').name('products.show')
-  Route.put('/products/:id', 'ProductController@update').name('products.update')
-  Route.delete('/products/:id', 'ProductController@destroy').name('products.destroy')
-
-  Route.get('/siswas', 'SiswaController@index').name('siswas.index')
-  Route.post('/siswas', 'SiswaController@store').name('siswas.store')
-  Route.get('/siswas/:id', 'SiswaController@show').name('siswas.show')
-  Route.put('/siswas/:id', 'SiswaController@update').name('siswas.update')
-  Route.delete('/siswas/:id', 'SiswaController@destroy').name('siswas.destroy')
 }

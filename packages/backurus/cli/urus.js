@@ -4,9 +4,9 @@ import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
+import https from 'node:https'
 import dotenv from 'dotenv'
 import chokidar from 'chokidar'
-import { createApp } from '../bootstrap/app.js'
 import { Migrator } from '../core/migrator.js'
 import { Seeder } from '../core/seeder.js'
 import { loadConfig } from '../core/config.js'
@@ -19,9 +19,14 @@ import { runTests } from '../core/testing/runner.js'
 
 dotenv.config()
 
+// Avoid noisy EPIPE crashes when output is piped (e.g. `node urus route:list | head`).
+process.stdout.on('error', (error) => {
+  if (error?.code === 'EPIPE') process.exit(0)
+})
+
 const [, , command, name] = process.argv
 const cacheFile = path.resolve(process.cwd(), 'storage/framework/cache/config.json')
-const registerFile = pathToFileURL(path.resolve(process.cwd(), 'backurus-register.mjs')).href
+const registerFile = new URL('../backurus-register.mjs', import.meta.url).href
 
 const ANSI = {
   reset: '\u001b[0m',
@@ -60,6 +65,61 @@ function banner() {
   console.log(paint(ANSI.bold, `${icons.dino} Backurus Development Server`))
   console.log(paint(ANSI.gray, 'Backurus — Modern Backend Framework for Node.js'))
   console.log('')
+}
+
+function compareSemver(a, b) {
+  const pa = String(a || '0.0.0').split('.').map((x) => Number(String(x).replace(/\D.*/, '')) || 0)
+  const pb = String(b || '0.0.0').split('.').map((x) => Number(String(x).replace(/\D.*/, '')) || 0)
+  for (let i = 0; i < 3; i++) {
+    const diff = (pa[i] || 0) - (pb[i] || 0)
+    if (diff !== 0) return diff
+  }
+  return 0
+}
+
+async function frameworkVersion() {
+  const pkgUrl = new URL('../package.json', import.meta.url)
+  const raw = await fsp.readFile(pkgUrl, 'utf8')
+  const pkg = JSON.parse(raw)
+  return pkg.version || '0.0.0'
+}
+
+async function fetchLatestFrameworkVersion({ timeoutMs = 1200 } = {}) {
+  const url = 'https://registry.npmjs.org/backurus/latest'
+  return new Promise((resolve) => {
+    const req = https.get(url, { timeout: timeoutMs }, (res) => {
+      let data = ''
+      res.on('data', (chunk) => { data += chunk })
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data)
+          resolve(parsed?.version || null)
+        } catch {
+          resolve(null)
+        }
+      })
+    })
+    req.on('timeout', () => {
+      req.destroy()
+      resolve(null)
+    })
+    req.on('error', () => resolve(null))
+  })
+}
+
+async function maybeNotifyUpdate() {
+  if (['1', 'true', 'yes'].includes(String(process.env.BACKURUS_DISABLE_UPDATE_CHECK || '').toLowerCase())) return
+  const current = await frameworkVersion().catch(() => null)
+  if (!current) return
+  const latest = await fetchLatestFrameworkVersion().catch(() => null)
+  if (!latest) return
+  if (compareSemver(latest, current) <= 0) return
+
+  console.log(`${icons.dino} Backurus update available!\n`)
+  console.log(`Current version: ${current}`)
+  console.log(`Latest version: ${latest}\n`)
+  console.log('Run:')
+  console.log('node urus update\n')
 }
 
 function logInfo(message) {
@@ -105,7 +165,7 @@ function templates(kind, rawName) {
   const map = {
     controller: { dir: 'app/controllers', file: `${name}.js`, content: `export default class ${name} {\n  async index(req, res) {\n    return res.success([])\n  }\n}\n` },
     service: { dir: 'app/services', file: `${name}.js`, content: `export default class ${name} {\n  constructor(container = null) {\n    this.container = container\n  }\n}\n` },
-    model: { dir: 'app/models', file: `${name}.js`, content: `import Model from '../../core/model'\n\nexport default class ${name} extends Model {\n  static table = '${tableName}'\n}\n` },
+    model: { dir: 'app/models', file: `${name}.js`, content: `import Model from 'backurus/core/model'\n\nexport default class ${name} extends Model {\n  static table = '${tableName}'\n}\n` },
     migration: { dir: 'database/migrations', file: `${timestamp()}_${rawName}.js`, content: `export default {\n  async up(schema) {\n    await schema.create('${rawName.replace(/^create_|_table$/g, '')}', (table) => {\n      table.id()\n      table.timestamps()\n    })\n  },\n\n  async down(schema) {\n    await schema.drop('${rawName.replace(/^create_|_table$/g, '')}')\n  }\n}\n` },
     middleware: { dir: 'app/middleware', file: `${name}.js`, content: `export default async function ${name}(req, res, next) {\n  return next()\n}\n` },
     request: { dir: 'app/requests', file: `${name}.js`, content: `export default class ${name} {\n  rules() {\n    return {}\n  }\n}\n` },
@@ -113,7 +173,7 @@ function templates(kind, rawName) {
     event: { dir: 'app/events', file: `${name}.js`, content: `export default class ${name} {\n  constructor(payload = {}) {\n    Object.assign(this, payload)\n  }\n}\n` },
     seeder: { dir: 'database/seeders', file: `${name}.js`, content: `export default {\n  async run() {}\n}\n` },
     policy: { dir: 'app/policies', file: `${name}.js`, content: `export default class ${name} {\n  update(user, model) {\n    return user.id === model.user_id\n  }\n}\n` },
-    resource: { dir: 'app/resources', file: `${name}.js`, content: `import { Resource } from '../../core/resource'\n\nexport default class ${name} extends Resource {\n  toJSON() {\n    return this.resource\n  }\n}\n` }
+    resource: { dir: 'app/resources', file: `${name}.js`, content: `import { Resource } from 'backurus/core/resource'\n\nexport default class ${name} extends Resource {\n  toJSON() {\n    return this.resource\n  }\n}\n` }
   }
   return map[kind]
 }
@@ -138,7 +198,7 @@ async function makeModule(rawName) {
 }
 
 async function routeList() {
-  const config = loadConfig()
+  const config = await loadConfig()
   const router = new Router({ config })
   router.aliasMiddleware('auth', async (req, res, next) => next())
   await loadModules(router, { config, container: null, events: null, queue: null, server: null, ws: null })
@@ -153,7 +213,7 @@ async function routeList() {
 }
 
 async function serveSummary() {
-  const config = loadConfig()
+  const config = await loadConfig()
   const url = config?.app?.url || `http://127.0.0.1:${config?.app?.port || 3000}`
   const env = config?.app?.env || 'development'
 
@@ -196,7 +256,7 @@ async function serveSummary() {
 }
 
 async function docsGenerate() {
-  const config = loadConfig()
+  const config = await loadConfig()
   const router = new Router({ config })
   router.aliasMiddleware('auth', async (req, res, next) => next())
   await loadModules(router, { config, container: null, events: null, queue: null, server: null, ws: null })
@@ -211,8 +271,18 @@ async function docsGenerate() {
   console.log(`Generated: ${path.relative(process.cwd(), outFile)}`)
 }
 
+async function loadProjectCreateApp() {
+  const file = path.resolve(process.cwd(), 'bootstrap/app.js')
+  const mod = await import(pathToFileURL(file).href)
+  if (typeof mod.createApp !== 'function') {
+    throw new Error('bootstrap/app.js must export `createApp`.')
+  }
+  return mod.createApp
+}
+
 async function withApp(callback) {
-  const app = await createApp()
+  const projectCreateApp = await loadProjectCreateApp()
+  const app = await projectCreateApp()
   try {
     await callback(app)
   } finally {
@@ -234,6 +304,8 @@ async function startServe() {
   let exitResolve = null
 
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+  await maybeNotifyUpdate()
 
   async function stopChildGracefully(signal = 'SIGTERM') {
     if (!child || child.killed) return
@@ -446,7 +518,7 @@ async function startServe() {
   }
 
   await spawnServerWithWait()
-  watcher = chokidar.watch(['app', 'bootstrap', 'config', 'core', 'database', 'routes', 'plugins', 'index.js'], {
+  watcher = chokidar.watch(['app', 'bootstrap', 'config', 'database', 'routes', 'plugins', 'index.js', 'modules'], {
     ignoreInitial: true
   })
   watcher.on('all', (_event, filePath) => {
@@ -477,7 +549,7 @@ async function startServe() {
 }
 
 async function configCache() {
-  const config = loadConfig()
+  const config = await loadConfig()
   await fsp.mkdir(path.dirname(cacheFile), { recursive: true })
   await fsp.writeFile(cacheFile, JSON.stringify(config, null, 2), 'utf8')
   console.log('Configuration cached successfully.')
@@ -517,6 +589,252 @@ async function storageLink() {
   console.log('The [public/storage] link has been connected to [storage/app/public].')
 }
 
+async function runNpmInstall(args) {
+  const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+  return new Promise((resolve, reject) => {
+    const child = spawn(npmCmd, ['install', ...args], { stdio: 'inherit', cwd: process.cwd(), env: process.env })
+    child.on('exit', (code) => {
+      if (code === 0) resolve(true)
+      else reject(new Error(`npm install exited with code ${code}`))
+    })
+    child.on('error', reject)
+  })
+}
+
+async function frameworkUpdate() {
+  await runNpmInstall(['backurus@latest'])
+  console.log('Backurus updated successfully.')
+}
+
+function findExportDefaultObjectRange(source) {
+  const marker = 'export default'
+  const idx = source.indexOf(marker)
+  if (idx === -1) return null
+  const braceIdx = source.indexOf('{', idx)
+  if (braceIdx === -1) return null
+
+  let i = braceIdx
+  let depth = 0
+  let inSingle = false
+  let inDouble = false
+  let inTemplate = false
+  let inLineComment = false
+  let inBlockComment = false
+  let escaped = false
+
+  for (; i < source.length; i++) {
+    const ch = source[i]
+    const next = source[i + 1]
+
+    if (inLineComment) {
+      if (ch === '\n') inLineComment = false
+      continue
+    }
+    if (inBlockComment) {
+      if (ch === '*' && next === '/') {
+        inBlockComment = false
+        i++
+      }
+      continue
+    }
+
+    if (!inSingle && !inDouble && !inTemplate) {
+      if (ch === '/' && next === '/') {
+        inLineComment = true
+        i++
+        continue
+      }
+      if (ch === '/' && next === '*') {
+        inBlockComment = true
+        i++
+        continue
+      }
+    }
+
+    if (inSingle) {
+      if (!escaped && ch === "'") inSingle = false
+      escaped = !escaped && ch === '\\'
+      continue
+    }
+    if (inDouble) {
+      if (!escaped && ch === '"') inDouble = false
+      escaped = !escaped && ch === '\\'
+      continue
+    }
+    if (inTemplate) {
+      if (!escaped && ch === '`') inTemplate = false
+      escaped = !escaped && ch === '\\'
+      continue
+    }
+
+    if (ch === "'") { inSingle = true; escaped = false; continue }
+    if (ch === '"') { inDouble = true; escaped = false; continue }
+    if (ch === '`') { inTemplate = true; escaped = false; continue }
+
+    if (ch === '{') depth++
+    if (ch === '}') {
+      depth--
+      if (depth === 0) {
+        return { start: braceIdx, end: i + 1 }
+      }
+    }
+  }
+
+  return null
+}
+
+function splitTopLevelObjectProps(objectLiteral) {
+  const content = objectLiteral.trim().slice(1, -1) // remove { }
+  const parts = []
+  let start = 0
+  let depth = 0
+  let inSingle = false
+  let inDouble = false
+  let inTemplate = false
+  let inLineComment = false
+  let inBlockComment = false
+  let escaped = false
+
+  for (let i = 0; i < content.length; i++) {
+    const ch = content[i]
+    const next = content[i + 1]
+
+    if (inLineComment) {
+      if (ch === '\n') inLineComment = false
+      continue
+    }
+    if (inBlockComment) {
+      if (ch === '*' && next === '/') {
+        inBlockComment = false
+        i++
+      }
+      continue
+    }
+
+    if (!inSingle && !inDouble && !inTemplate) {
+      if (ch === '/' && next === '/') { inLineComment = true; i++; continue }
+      if (ch === '/' && next === '*') { inBlockComment = true; i++; continue }
+    }
+
+    if (inSingle) {
+      if (!escaped && ch === "'") inSingle = false
+      escaped = !escaped && ch === '\\'
+      continue
+    }
+    if (inDouble) {
+      if (!escaped && ch === '"') inDouble = false
+      escaped = !escaped && ch === '\\'
+      continue
+    }
+    if (inTemplate) {
+      if (!escaped && ch === '`') inTemplate = false
+      escaped = !escaped && ch === '\\'
+      continue
+    }
+
+    if (ch === "'") { inSingle = true; escaped = false; continue }
+    if (ch === '"') { inDouble = true; escaped = false; continue }
+    if (ch === '`') { inTemplate = true; escaped = false; continue }
+
+    if (ch === '{' || ch === '[' || ch === '(') depth++
+    if (ch === '}' || ch === ']' || ch === ')') depth = Math.max(0, depth - 1)
+
+    if (ch === ',' && depth === 0) {
+      parts.push(content.slice(start, i))
+      start = i + 1
+    }
+  }
+  parts.push(content.slice(start))
+
+  return parts
+    .map((p) => p.trim())
+    .filter(Boolean)
+}
+
+function extractPropKey(prop) {
+  const trimmed = prop.trim()
+  if (!trimmed || trimmed.startsWith('...')) return null
+  const colon = trimmed.indexOf(':')
+  if (colon === -1) return null
+  const left = trimmed.slice(0, colon).trim()
+  if (!left) return null
+  if ((left.startsWith('"') && left.endsWith('"')) || (left.startsWith("'") && left.endsWith("'"))) {
+    return left.slice(1, -1)
+  }
+  const match = left.match(/^[A-Za-z_$][A-Za-z0-9_$]*$/)
+  return match ? match[0] : null
+}
+
+function detectIndent(source) {
+  const match = source.match(/\n(\s+)[A-Za-z_$'"]/)
+  return match ? match[1] : '  '
+}
+
+function reindent(snippet, indent) {
+  const lines = snippet.split('\n')
+  const nonEmpty = lines.filter((l) => l.trim().length)
+  const minLead = nonEmpty.length
+    ? Math.min(...nonEmpty.map((l) => (l.match(/^\s*/)?.[0]?.length || 0)))
+    : 0
+  return lines.map((l) => (l.trim().length ? `${indent}${l.slice(minLead)}` : l)).join('\n')
+}
+
+async function configSync() {
+  const templateDir = new URL('../templates/config/', import.meta.url)
+  const templateFiles = (await fsp.readdir(templateDir, { withFileTypes: true }))
+    .filter((e) => e.isFile() && e.name.endsWith('.js'))
+    .map((e) => e.name)
+    .sort()
+
+  const projectConfigDir = path.resolve(process.cwd(), 'config')
+  await fsp.mkdir(projectConfigDir, { recursive: true })
+
+  for (const fileName of templateFiles) {
+    const templatePath = new URL(fileName, templateDir)
+    const targetPath = path.resolve(projectConfigDir, fileName)
+
+    const templateSource = await fsp.readFile(templatePath, 'utf8')
+    try {
+      await fsp.access(targetPath)
+    } catch {
+      await fsp.writeFile(targetPath, templateSource, 'utf8')
+      console.log(`Synced: config/${fileName} (created)`)
+      continue
+    }
+
+    const userSource = await fsp.readFile(targetPath, 'utf8')
+    const userRange = findExportDefaultObjectRange(userSource)
+    const templateRange = findExportDefaultObjectRange(templateSource)
+    if (!userRange || !templateRange) {
+      console.log(`Skipped: config/${fileName} (unsupported format)`)
+      continue
+    }
+
+    const userObj = userSource.slice(userRange.start, userRange.end)
+    const templateObj = templateSource.slice(templateRange.start, templateRange.end)
+
+    const userIndent = detectIndent(userSource)
+    const userProps = new Set(splitTopLevelObjectProps(userObj).map(extractPropKey).filter(Boolean))
+    const templateProps = splitTopLevelObjectProps(templateObj)
+      .map((prop) => ({ key: extractPropKey(prop), prop }))
+      .filter((x) => x.key)
+
+    const missing = templateProps.filter((p) => !userProps.has(p.key))
+    if (!missing.length) {
+      console.log(`Synced: config/${fileName} (no changes)`)
+      continue
+    }
+
+    const insertion = missing.map((p) => reindent(p.prop.replace(/,\s*$/, ''), userIndent)).join(`,\n`) + ',\n'
+    const beforeClose = userSource.slice(0, userRange.end - 1)
+    const afterClose = userSource.slice(userRange.end - 1)
+    const nextSource = `${beforeClose}\n${insertion}${afterClose}`
+
+    await fsp.writeFile(targetPath, nextSource, 'utf8')
+    console.log(`Synced: config/${fileName} (+${missing.length} keys)`)
+  }
+}
+
 async function migrateStatus(app) {
   const migrator = new Migrator(app.db, app.config)
   const files = await migrator.files()
@@ -544,7 +862,9 @@ async function main() {
     case 'make:module': return makeModule(name)
     case 'config:cache': return configCache()
     case 'config:clear': return configClear()
+    case 'config:sync': return configSync()
     case 'storage:link': return storageLink()
+    case 'update': return frameworkUpdate()
     case 'serve': return startServe()
     case 'route:list': return routeList()
     case 'docs:generate': return docsGenerate()
@@ -569,7 +889,7 @@ async function main() {
       case 'queue:restart': return queueRestart()
       case 'schedule:run': return app.container.make('scheduler').runAll()
       default:
-        console.log(`Backurus CLI\n\nCommands:\n- make:controller\n- make:service\n- make:model\n- make:migration\n- make:middleware\n- make:request\n- make:job\n- make:event\n- make:seeder\n- make:policy\n- make:resource\n- make:module\n- migrate\n- migrate:rollback\n- migrate:reset\n- migrate:fresh\n- migrate:status\n- db:seed\n- route:list\n- docs:generate\n- queue:work\n- queue:restart\n- schedule:run\n- serve\n- test\n- storage:link\n- config:cache\n- config:clear`)
+        console.log(`Backurus CLI\n\nCommands:\n- make:controller\n- make:service\n- make:model\n- make:migration\n- make:middleware\n- make:request\n- make:job\n- make:event\n- make:seeder\n- make:policy\n- make:resource\n- make:module\n- migrate\n- migrate:rollback\n- migrate:reset\n- migrate:fresh\n- migrate:status\n- db:seed\n- route:list\n- docs:generate\n- queue:work\n- queue:restart\n- schedule:run\n- serve\n- test\n- update\n- storage:link\n- config:cache\n- config:clear\n- config:sync`)
     }
   })
 }
