@@ -5,6 +5,7 @@ export default async function routes(Route) {
 
   Route.post('/login', 'AuthController@login').name('auth.login')
   Route.post('/register', 'AuthController@register').name('auth.register')
+  Route.post('/logout', 'AuthController@logout').middleware('auth').name('auth.logout')
 
   Route.get('/users', 'UserController@index').name('users.index')
   Route.post('/users', 'UserController@store').name('users.store')

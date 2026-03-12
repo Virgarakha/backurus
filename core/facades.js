@@ -1,4 +1,5 @@
 import { appContainer } from './runtime'
+import { getRequestContext } from './request-context.js'
 
 function service(name) {
   return appContainer.make(name)
@@ -102,5 +103,83 @@ export const Gate = {
 export const Storage = {
   disk(name = null) {
     return service('storage').disk(name)
+  }
+}
+
+function bearerTokenFromHeaders(headers) {
+  const authHeader = headers?.authorization || headers?.Authorization
+  if (!authHeader) return null
+  const value = String(authHeader)
+  if (!value.toLowerCase().startsWith('bearer ')) return null
+  const token = value.slice(7).trim()
+  return token || null
+}
+
+function revokedTokenKey(token) {
+  return `auth:revoked:${token}`
+}
+
+function parseJwtExpiresInToSeconds(expiresIn) {
+  if (expiresIn === null || expiresIn === undefined) return null
+  if (typeof expiresIn === 'number' && Number.isFinite(expiresIn)) return Math.max(expiresIn, 1)
+  const raw = String(expiresIn).trim()
+  if (!raw) return null
+  if (/^\d+$/.test(raw)) return Math.max(Number(raw), 1)
+  const match = raw.match(/^(\d+)\s*([smhd])$/i)
+  if (!match) return null
+  const amount = Number(match[1])
+  const unit = match[2].toLowerCase()
+  const multipliers = { s: 1, m: 60, h: 60 * 60, d: 60 * 60 * 24 }
+  return Math.max(amount * (multipliers[unit] || 1), 1)
+}
+
+function inferTokenTtlSeconds(req) {
+  const exp = req?.auth?.payload?.exp
+  const nowSeconds = Math.floor(Date.now() / 1000)
+  if (Number.isFinite(exp)) return Math.max(exp - nowSeconds, 1)
+  try {
+    const config = service('config')
+    return parseJwtExpiresInToSeconds(config?.auth?.jwtExpiresIn) || 60 * 60 * 24 * 7
+  } catch {
+    return 60 * 60 * 24 * 7
+  }
+}
+
+export const Auth = {
+  token() {
+    const ctx = getRequestContext()
+    const req = ctx?.req
+    const token = req?.token || bearerTokenFromHeaders(req?.headers) || null
+
+    // String-like token object, so developers can do: `await Auth.token().delete()`
+    const tokenString = token || ''
+    const out = new String(tokenString)
+    out.value = () => token
+    out.exists = () => !!token
+    out.delete = async () => {
+      if (!token) return false
+      const ttlSeconds = inferTokenTtlSeconds(req)
+      await Cache.set(revokedTokenKey(token), true, ttlSeconds)
+      return true
+    }
+    return out
+  },
+
+  user() {
+    const ctx = getRequestContext()
+    return ctx?.req?.user || null
+  },
+
+  id() {
+    const user = Auth.user()
+    return user?.id ?? null
+  },
+
+  check() {
+    return !!Auth.user()
+  },
+
+  guest() {
+    return !Auth.check()
   }
 }
